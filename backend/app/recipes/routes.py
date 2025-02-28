@@ -1,15 +1,127 @@
+import json
 import logging
+import os
+from base64 import b64encode
+from io import BytesIO
+
+from PIL import Image
 
 from flask import jsonify, Blueprint, request
-
+from dotenv import load_dotenv
 from app import db
 from app.models import Recipe, RecipeType, Ingredient, RecipeIngredient
 
-
+load_dotenv()
 recipe_bp = Blueprint('recipe', __name__)
 
 
-@recipe_bp.route('/')
+@recipe_bp.route('/process-image', methods=['POST'])
+def add_with_image():
+    if 'image' not in request.files:
+        return jsonify({"error": "No image uploaded"}), 400
+
+    from groq import Groq
+
+    api_key = os.getenv("GROQ_API_KEY")
+    client = Groq(api_key=api_key)
+
+    # Load the image from request
+    image_file = request.files['image']
+    image = Image.open(image_file)
+
+    # Convert image to base64 (optional)
+    buffered = BytesIO()
+    image.save(buffered, format=image.format)
+    image_base64 = b64encode(buffered.getvalue()).decode()
+
+    completion = client.chat.completions.create(
+        model="llama-3.2-90b-vision-preview",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Extract all text from the image"
+                    },
+                    {
+                        "type": "image_url", "image_url":
+                        {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        }
+                    }
+
+                ]
+            }
+        ],
+        temperature=1,
+        max_completion_tokens=1024,
+        top_p=1,
+        stream=False,
+        stop=None
+    )
+
+    recipe_text = completion.choices[0].message.content
+
+    recipe_types = RecipeType.query.all()
+    recipe_types_list = [{"id": rt.id, "name": rt.name} for rt in recipe_types]
+
+    json_output = {
+        "recipe": {
+            'name': "",
+            'types': [{
+                "id": "",
+                "name": ""
+            }],
+            "ingredients": [{
+                "name": "",
+                "amount": "",
+                "unit": ""
+            }],
+            'steps': "",
+        },
+    }
+
+    json_prompt = (
+        f"Take the context and convert it into JSON following these guidelines:\n\n"
+        f"Context: {recipe_text}"
+        f"1. Recipe Types:\n"
+        f"   - Identify the recipe type from the image and ensure that it is one of the allowed types: {recipe_types_list}.\n"
+        f"   - If the extracted recipe type does not directly match any of the allowed types, select the most appropriate type from the allowed list instead of skipping.\n\n"
+        f"2. Name: \n"
+        f"   - Name should be capitalized.\n" 
+        f"3. Steps:\n"
+        f"   - Split the recipe steps into individual paragraphs using the newline character ('\\n') as a delimiter.\n\n"
+        f"4. Ingredients:\n"
+        f"   - For each ingredient, extract the ingredient name, the amount, and the unit.\n"
+        f"   - The amount must contain only a numerical value in standard decimal format (e.g., '0.5' instead of '1/2'), with no units or fractions included.\n"
+        f"   - If unit is missing, represent it as an empty string, ingredient name and amount are mandatory.\n\n"
+        f"5. Final Output:\n"
+        f"   - Use the following JSON structure exactly:\n{json.dumps(json_output)}\n"
+        f"   - Ensure that the output is valid JSON.\n"
+    )
+
+    completion = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "user",
+                "content": json_prompt
+            }
+        ],
+        temperature=1,
+        max_completion_tokens=1024,
+        top_p=1,
+        stream=False,
+        stop=None,
+        response_format={"type": "json_object"},
+    )
+
+    recipe = json.loads(completion.choices[0].message.content)
+    return jsonify(recipe)
+
+
+@recipe_bp.route('/', methods=['GET'])
 def list_recipes():
     recipes = Recipe.query.all()
     recipe_list = []

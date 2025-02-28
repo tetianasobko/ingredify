@@ -1,155 +1,239 @@
 <template>
-  <div class="recipe-detail">
-    <div class="hero-image">
-      <img src="/default_recipe.svg" :alt="recipe.name"/>
-      <div class="overlay">
-        <h1>{{ recipe.name }}</h1>
-        <div class="info">
-          <span><i class="fa fa-clock"></i> 15 mins</span>
-        </div>
+  <section class="recipe-detail">
+    <section class="hero">
+      <img :src="heroImage" :alt="recipe.name || 'Recipe Image'"
+           class="hero-image" />
+      <div class="hero-overlay">
+        <h1 class="recipe-title">{{ recipe.name || 'Recipe Name' }}</h1>
+        <div class="recipe-timer">15 mins</div>
       </div>
-    </div>
+    </section>
 
-    <div class="types">
-      <button v-for="type in recipe.types">{{ type.name }}</button>
-    </div>
-
-    <!-- Ingredients Section -->
-    <div class="ingredients">
-      <h2>Ingredients</h2>
-      <ul>
-        <li v-for="(ingredient, index) in recipe.ingredients" :key="index">
-          <span>{{ ingredient.name }} - {{
-              ingredient.amount
-            }} {{ ingredient.unit }}</span>
-        </li>
-      </ul>
-    </div>
-
-    <!-- Instructions Section -->
-    <div class="recipe-container">
-      <div class="instructions">
-        <h2>Preparation Steps</h2>
-        <ol>
-          <li v-for="(step, index) in recipe.steps.split('\n')" :key="index">
-            <p>{{ step }}</p>
-          </li>
-        </ol>
+    <section class="content">
+      <div class="button-group types">
+        <button v-for="type in recipe.types" :key="type.id" class="type-btn">{{ type.name }}
+        </button>
       </div>
-      <div class="notes">
-        <h2>Notes</h2>
+
+      <!-- Ingredients Section -->
+      <div class="section ingredients">
+        <h2>Ingredients</h2>
         <ul>
-          <li>Some</li>
-          <li>Useful</li>
-          <li>Notes</li>
+          <li v-for="(ingredient, index) in recipe.ingredients" :key="index">
+            <span>{{ ingredient.amount }} {{ ingredient.unit
+              }} {{ pluralize(ingredient.name, ingredient.amount) }}</span>
+          </li>
         </ul>
       </div>
-    </div>
 
-    <!-- Save to Favorites or Shopping List -->
-    <div class="cta-buttons">
-      <button @click="editRecipe" class="cta-button">Edit</button>
-      <button @click="deleteRecipe" class="cta-button">Delete</button>
-    </div>
-  </div>
+      <!-- Instructions Section -->
+      <div class="recipe-container">
+        <div class="instructions">
+          <h2>Preparation Steps</h2>
+          <ol>
+            <li v-for="(step, index) in recipe.steps.split('\n')" :key="index">
+              <p>{{ step }}</p>
+            </li>
+          </ol>
+        </div>
+        <div class="notes">
+          <h2>Notes</h2>
+          <ul>
+            <li>Some</li>
+            <li>Useful</li>
+            <li>Notes</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Save to Favorites or Shopping List -->
+    </section>
+    <section class="cta-buttons">
+      <button @click="editRecipe" class="cta-btn">Edit</button>
+      <button @click="deleteRecipe" class="cta-btn">Delete</button>
+    </section>
+  </section>
 </template>
 
 <script>
-import axios from "axios";
+import pluralize from 'pluralize'
+import axios from 'axios'
 
 export default {
   data() {
     return {
+      heroImage: '/default_recipe.svg',
       recipe: {
         id: null,
         name: '',
         // imageUrl: '',
         servings: '',
-        type: {name: ''},
+        type: { name: '' },
         ingredients: [],
-        steps: '',
+        steps: ''
       }
-    };
+    }
   },
   async created() {
-    const recipeId = this.$route.params.id;
+    const recipeId = this.$route.params.id
 
     if (recipeId) {
       try {
-        const response = await axios(`http://localhost:5000/api/recipes/${recipeId}`);
-        this.recipe = response.data.recipe;
+        const response = await axios(`http://localhost:5000/api/recipes/${recipeId}`)
+        this.recipe = response.data.recipe
         console.log(this.recipe)
       } catch (error) {
-        console.error('Error fetching recipe:', error);
+        console.error('Error fetching recipe:', error)
       }
     }
   },
   methods: {
+    pluralize,
     editRecipe() {
-      this.$router.push({name: 'edit-recipe', params: {id: this.recipe.id}});
+      this.$router.push({
+        name: 'edit-recipe',
+        params: { id: this.recipe.id }
+      })
     },
     async deleteRecipe() {
       try {
-        const response = await axios.delete(`http://localhost:5000/api/recipes/delete/${this.recipe.id}`);
-        this.$router.push({name: 'recipe-list'});
+        await axios.delete(`http://localhost:5000/api/recipes/delete/${this.recipe.id}`)
+        this.$router.push({ name: 'recipe-list' })
       } catch (error) {
-        console.error('Error deleting recipe:', error);
+        console.error('Error deleting recipe:', error)
       }
     }
-  },
-};
+  }
+}
 </script>
 
 <style scoped>
-.recipe-detail {
-  max-width: 100%;
-  margin: 0 auto;
+:root {
+  --bg-color: #1f1f1f;
+  --card-bg: #2a2a2a;
+  --primary: #620ea;
+  --primary-hover: #7e30ff;
+  --text-color: #e0e0e0;
+  --border-color: #555;
 }
 
-.hero-image {
+/* Outer Container */
+.recipe-detail {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  width: 100%;
+  border-radius: 10px;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Hero Section */
+.hero {
   position: relative;
   width: 100%;
   height: 600px;
 }
 
-.hero-image img {
+.hero-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 0.9;
 }
 
-.hero-image .overlay {
+.hero-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  color: white;
+  left: 0;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 10px 0;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.recipe-title {
+  background: transparent;
+  border: none;
+  color: var(--text-color);
+  font-size: 1.8em;
+  font-weight: bold;
+  margin: 5px 15px 10px;
+  padding: 1px;
+}
+
+.recipe-title::placeholder {
+  color: #aaa;
+}
+
+.recipe-timer {
+  margin: 16px 15px 0;
+  border-radius: 5px;
+  font-size: 0.9em;
+}
+
+/* Content Section */
+.content {
+  margin: 20px 0 20px;
+  padding: 0 15px 8px;
+}
+
+.recipe-container {
   display: flex;
-  flex-direction: column;
-  justify-content: end;
-  align-items: flex-start;
-  text-align: center;
+  flex-wrap: wrap;
+  gap: 10%;
+  justify-content: space-between;
+  padding-right: 7%;
 }
 
-.hero-image .overlay h1 {
-  font-size: 2.5em;
-  margin-left: 20px;
-  margin-bottom: 10px;
+.instructions, .notes {
+  flex: 1;
 }
 
-.hero-image .overlay .info {
+.instructions {
+  flex: 2;
+  padding: 20px 0;
+  border-radius: 8px;
+  width: 400px;
+}
+
+.notes {
+  flex: 1;
+  margin-top: 15px;
+  padding: 5px 20px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  max-width: 350px;
+}
+
+/* Section Headings */
+.content h1 {
+  margin-bottom: 15px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 1.5em;
+  background-color: var(--card-bg);
+  border-radius: 8px;
+}
+
+h2 {
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color);
   font-size: 1.2em;
-  margin-left: 20px;
-  margin-bottom: 10px;
 }
 
-.ingredients, .instructions, .cta-buttons {
-  padding: 20px;
-  margin-bottom: 20px;
+/* Button Groups */
+.button-group, .cta-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
+.cta-buttons {
+  margin: 15px;
+}
+
+/* Ingredient List */
 .ingredients ul, .instructions ol {
   list-style-type: none;
   padding-left: 0;
@@ -159,40 +243,26 @@ export default {
   margin-bottom: 10px;
 }
 
-.cta-buttons button {
-  padding: 10px 20px;
-  font-size: 1em;
-  background-color: #008CBA;
-  color: white;
-  border: none;
+/* Unified Button Styles */
+.cta-btn {
+  background-color: var(--primary);
+  border: 1px solid grey;
+  color: #fff;
+  border-radius: 8px;
+  padding: 10px 15px;
   cursor: pointer;
-  margin-right: 10px;
+  transition: background 0.3s ease;
+  font-size: 1em;
+  margin-bottom: 10px;
+  margin-top: 10px;
 }
 
-.cta-buttons button:hover {
-  background-color: #005f75;
+.cta-btn:hover {
+  background-color: #1a1a1a;
+  border-color: #747bff;
 }
 
-.recipe-container {
-  display: flex;
-  gap: 20px;
-}
-
-.instructions, .notes {
-  flex: 1;
-}
-
-.instructions {
-  padding: 20px;
-  border-radius: 8px;
-  max-width: 50%;
-}
-
-.notes {
-  padding: 20px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  max-width: 300px;
-
+.type-btn {
+  border-radius: 20px;
 }
 </style>

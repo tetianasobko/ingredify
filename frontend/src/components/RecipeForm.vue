@@ -1,437 +1,635 @@
 <template>
   <div class="recipe-detail">
-    <div class="hero-image">
-      <img src="/default_recipe.svg" :alt="recipe.name" />
-      <div class="overlay">
-        <input v-model="recipe.name" class="edit-input title-input" />
-        <div class="info">
-          <span>15 mins</span>
+    <div v-if="isLoading" class="overlay">
+      <div class="loader"></div>
+    </div>
+    <section class="hero">
+      <img :src="heroImage" :alt="recipe.name || 'Recipe Image'"
+           class="hero-image" />
+      <div class="hero-overlay">
+        <input
+          v-model="recipe.name"
+          class="recipe-title"
+          placeholder="Enter recipe name"
+        />
+        <div class="recipe-timer">15 mins</div>
+      </div>
+    </section>
+
+    <!-- Main Content Section -->
+    <section class="content">
+      <!-- Manual Entry Column -->
+      <div class="manual-entry">
+        <h1>Recipe Details</h1>
+
+        <!-- Recipe Type Section -->
+        <div class="section types">
+          <h2>Type</h2>
+          <div class="button-group">
+            <button
+              v-for="type in types"
+              :key="type.id"
+              @click="toggleType(type)"
+              :class="{ selected: recipe.types.some(t => String(t.id) === String(type.id)) }"
+            >
+              {{ type.name }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Ingredients Section -->
+        <div class="section ingredients">
+          <h2>Ingredients</h2>
+          <div class="ingredient-input">
+            <input
+              v-model="newIngredient"
+              list="ingredient-list"
+              placeholder="Add ingredient"
+              @change="onIngredientSelect"
+              @input="filterIngredients"
+              @keyup.enter="addIngredient"
+              class="input-field"
+            />
+            <datalist id="ingredient-list">
+              <option
+                v-for="ing in filteredIngredients"
+                :key="ing.id"
+                :value="ing.name"
+              >
+                {{ ing.name }}
+              </option>
+            </datalist>
+            <button class="btn" @click="addIngredient">+ Add</button>
+          </div>
+          <ul class="ingredient-list">
+            <li v-for="(ing, index) in recipe.ingredients" :key="index"
+                class="ingredient-item">
+              <span class="ingredient-name">{{ ing.name }}</span>
+              <input v-model="ing.amount" class="input-field small"
+                     placeholder="Amt" />
+              <input v-model="ing.unit" class="input-field small"
+                     placeholder="Unit" />
+              <button class="btn delete-btn" @click="removeIngredient(index)">
+                ×
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Instructions Section -->
+        <div class="section instructions">
+          <h2>Preparation Steps</h2>
+          <textarea
+            v-model="recipe.steps"
+            class="textarea-field"
+            placeholder="Enter instructions..."
+            ref="textareaEl"
+            @keyup="setHeight"
+            @click="setHeight"
+          ></textarea>
         </div>
       </div>
-    </div>
 
-    <div class="types">
-      <div class="type-buttons">
-        <button
-          v-for="type in types"
-          :key="type.name"
-          @click="toggleType(type)"
-          :class="{ selected: recipe.types.some(t => t.id === type.id) }"
-        >
-          {{ type.name }}
+      <!-- Extraction Column -->
+      <div class="extract" v-if="!recipeId">
+        <h1>Extract Recipe</h1>
+        <div class="button-group">
+          <label class="file-label" v-if="!imageUrl">
+            <input type="file" accept="image/*" @change="handleImageUpload" />
+            Choose an Image
+          </label>
+          <button v-if="imageFile" class="btn process-btn"
+                  @click="processImage">
+            Process Image
+          </button>
+        </div>
+        <div v-if="imageUrl" class="image-preview">
+          <button class="delete-image-btn" @click="deleteImage">ˣ</button>
+          <img :src="imageUrl" alt="Uploaded Image" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Unified CTA Buttons -->
+    <section class="cta-buttons">
+      <div class="recipe-manual-buttons">
+        <button class="cta-btn save-btn" @click="saveRecipe">Save Changes
         </button>
+        <!--      <button class="cta-btn" @click="addToShoppingList">Add to Shopping List-->
+        <!--      </button>-->
       </div>
-    </div>
-
-    <!-- Ingredients Section -->
-    <div class="ingredients">
-      <h2>Ingredients</h2>
-      <input
-        v-model="newIngredient"
-        list="ingredient-list"
-        placeholder="Enter the ingredient"
-        ref="ingredientEl"
-        @change="onIngredientSelect"
-        @input="filterIngredients"
-        @keyup.enter="addIngredient"
-        class="custom-input edit-input small"
-      />
-      <datalist id="ingredient-list">
-        <option v-for="ingredient in filteredIngredients" :key="ingredient.id" :value="ingredient.name">{{ingredient.name}}</option>
-      </datalist>
-      <button @click="addIngredient" class="add-btn">+ Add Ingredient</button>
-      <ul class="ingredient-list">
-        <li v-for="(ingredient, index) in recipe.ingredients" :key="index" class="ingredient-item">
-          <span class="ingredient-name">{{ingredient.name}}</span>
-          <input v-model="ingredient.amount" class="edit-input very-small" placeholder="Amount" />
-          <input v-model="ingredient.unit" class="edit-input very-small" placeholder="Unit" />
-          <button @click="removeIngredient(index)" class="delete-btn">X</button>
-        </li>
-      </ul>
-    </div>
-
-    <!-- Instructions Section -->
-    <div class="recipe-container">
-      <div class="instructions">
-        <h2>Preparation Steps</h2>
-        <textarea v-model="recipe.steps" class="edit-textarea" ref="textareaEl" @keyup="setHeight" @click="setHeight"></textarea>
+      <div class="recipe-extract-buttons">
 
       </div>
-    </div>
-
-    <!-- Save to Favorites or Shopping List -->
-    <div class="cta-buttons">
-      <button @click="saveRecipe" class="cta-button">Save Changes</button>
-      <button @click="addToShoppingList" class="cta-button">Add to Shopping List</button>
-    </div>
+    </section>
   </div>
 </template>
 
 <script>
-import axios from "axios";
+import pluralize from 'pluralize'
+import axios from 'axios'
 
 export default {
   data() {
     return {
+      heroImage: '/default_recipe.svg',
+      recipeId: null,
+      isLoading: false,
       recipe: {
         id: null,
         name: '',
         types: [],
         ingredients: [],
-        steps: '',
+        steps: ''
       },
       types: [],
       ingredientsAll: [],
       newIngredient: '',
       filteredIngredients: [],
-      selectedUnit: null,
-      unitEnum: {}
+      imageFile: null,
+      imageUrl: null
     }
   },
   async created() {
-    const recipeId = this.$route.params.id;
+    this.recipeId = this.$route.params.id
     try {
-      const response = await axios.get('http://localhost:5000/api/types/');
-      this.types = await response.data.types;
-    } catch (error) {
-      console.error('Error fetching types:', error);
+      const res = await axios.get('http://localhost:5000/api/types/')
+      this.types = res.data.types
+    } catch (e) {
+      console.error('Error fetching types:', e)
     }
     try {
-       const response = await axios.get('http://localhost:5000/api/ingredients/');
-       this.ingredientsAll = response.data.ingredients.slice();
-     } catch (error) {
-       console.error("Error fetching ingredients", error);
-     }
-
-    if (recipeId) {
+      const res = await axios.get('http://localhost:5000/api/ingredients/')
+      this.ingredientsAll = res.data.ingredients
+    } catch (e) {
+      console.error('Error fetching ingredients:', e)
+    }
+    if (this.recipeId) {
       try {
-        const response = await axios.get(`http://localhost:5000/api/recipes/${recipeId}`);
-        this.recipe = await response.data.recipe;
-      } catch (error) {
-        console.error('Error fetching recipe:', error);
+        const res = await axios.get(`http://localhost:5000/api/recipes/${this.recipeId}`)
+        this.recipe = res.data.recipe
+      } catch (e) {
+        console.error('Error fetching recipe:', e)
       }
-    } else {
-      this.recipe = {
-        id: null,
-        name: '',
-        types: [],
-        ingredients: [],
-        steps: '',
-      }
-    }
-  },
-  watch: {
-    'recipe.steps': function () {
-      this.$nextTick(() => {
-        this.setHeight();
-      });
     }
   },
   mounted() {
-    this.$nextTick(() => {
-      this.setHeight()
-    });
+    this.$nextTick(() => this.setHeight())
   },
   methods: {
+    pluralize,
+    handleImageUpload(event) {
+      const file = event.target.files[0]
+      if (file) {
+        this.imageFile = file
+        this.imageUrl = URL.createObjectURL(file)
+      }
+    },
+    deleteImage() {
+      this.imageFile = null
+      this.imageUrl = null
+    },
+    async processImage() {
+      this.isLoading = true
+
+      if (!this.imageFile) {
+        this.isLoading = false
+        return
+      }
+
+      const formData = new FormData()
+      formData.append('image', this.imageFile)
+      try {
+        const res = await axios.post('http://localhost:5000/api/recipes/process-image', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        const recipe = res.data.recipe
+        console.log(recipe)
+
+        this.recipe = {
+          id: null,
+          name: '',
+          types: [],
+          ingredients: [],
+          steps: ''
+        }
+
+        recipe.ingredients.forEach((ingredient) => {
+          this.newIngredient = ingredient.name
+          this.addIngredient(ingredient.amount, ingredient.unit)
+        })
+
+        recipe.types.forEach((type) => {
+          this.toggleType(type)
+        })
+
+        this.recipe.name = recipe.name
+        this.recipe.steps = recipe.steps
+        this.$nextTick(() => this.setHeight())
+
+        console.log(this.recipe)
+
+      } catch (e) {
+        console.error('Error processing image:', e)
+      } finally {
+        this.isLoading = false
+      }
+    },
     toggleType(type) {
-      const index = this.recipe.types.findIndex(t => t.id === type.id); // Find exact match by ID
-      if (index === -1) {
-        this.recipe.types.push(type);
+      const idx = this.recipe.types.findIndex(t => t.id === type.id)
+      if (idx === -1) {
+        this.recipe.types.push(type)
       } else {
-        this.recipe.types.splice(index, 1);
+        this.recipe.types.splice(idx, 1)
+      }
+    },
+    filterIngredients() {
+      if (!this.newIngredient.trim()) {
+        this.filteredIngredients = []
+      } else {
+        this.filteredIngredients = this.ingredientsAll.filter(ing =>
+          ing.name.toLowerCase().includes(this.newIngredient.toLowerCase())
+        )
       }
     },
     onIngredientSelect() {
       this.$nextTick(() => {
-        this.filteredIngredients = [];
-      });
+        this.filteredIngredients = []
+      })
     },
-    filterIngredients() {
-      if (!this.newIngredient.trim()) {
-        this.filteredIngredients = [];
-      } else {
-        this.filteredIngredients = this.ingredientsAll.filter(ingredient =>
-            ingredient.name.toLowerCase().includes(this.newIngredient.toLowerCase())
-        );
-      }
-    },
-    async addIngredient() {
-      const trimmed = this.newIngredient.trim().toLowerCase();
-      if (!trimmed) return;
-
-      let existingIngredient = this.ingredientsAll.find(ingredient =>
-        ingredient.name.toLowerCase() === trimmed
-      );
-
-      if (!existingIngredient) {
+    async addIngredient(amount=undefined, unit=undefined) {
+      const trimmed = pluralize.singular(this.newIngredient.trim().toLowerCase())
+      if (!trimmed) return
+      let existing = this.ingredientsAll.find(ing => ing.name.toLowerCase() === trimmed)
+      if (!existing) {
         try {
-          const response = await axios.post('http://localhost:5000/api/ingredients/add', { name: trimmed });
-          const { id, name } = response.data.ingredient;
-          const newIngredient = { id, name: name.toLowerCase(), amount: '', unit: '' };
-
-          this.ingredientsAll.push(newIngredient);
-          this.recipe.ingredients.push(newIngredient);
-        } catch (error) {
-          console.error("Error adding new ingredient to database", error);
+          const res = await axios.post('http://localhost:5000/api/ingredients/add', { name: trimmed })
+          const { id, name } = res.data.ingredient
+          const newIng = {
+            id,
+            name: name.toLowerCase(),
+            amount: amount,
+            unit: unit
+          }
+          this.ingredientsAll.push(newIng)
+          this.recipe.ingredients.push(newIng)
+        } catch (e) {
+          console.error('Error adding ingredient:', e)
         }
       } else {
-        if (!this.recipe.ingredients.find(ingredient => ingredient.name.toLowerCase() === trimmed)) {
+        if (!this.recipe.ingredients.find(ing => ing.name.toLowerCase() === trimmed)) {
           this.recipe.ingredients.push({
-            id: existingIngredient.id,
-            name: existingIngredient.name.toLowerCase(),
-            amount: '',
-            unit: ''
-          });
+            id: existing.id,
+            name: existing.name.toLowerCase(),
+            amount: amount,
+            unit: unit
+          })
         }
       }
-
-      this.newIngredient = '';
-      this.filteredIngredients = [];
+      this.newIngredient = ''
+      this.filteredIngredients = []
     },
     removeIngredient(index) {
-      this.recipe.ingredients.splice(index, 1);
+      this.recipe.ingredients.splice(index, 1)
     },
     async saveRecipe() {
-      if (!this.recipe.name || !this.recipe.ingredients || !this.recipe.steps) {
-        alert("Recipe title, ingredients and steps are necessary!");
-        return;
+      if (!this.recipe.name || !this.recipe.ingredients.length || !this.recipe.steps) {
+        alert('Please fill in the recipe details.')
+        return
       }
-
-      for (const ingredient of this.recipe.ingredients) {
-        if (!ingredient.amount || ingredient.amount <= 0 || isNaN(ingredient.amount)) {
-          alert(`Invalid amount! "${ingredient.name}"!`);
-          return;
-        }
-        if (!ingredient.unit) {
-          alert(`Choose unit for "${ingredient.name}"!`);
-          return;
+      for (const ing of this.recipe.ingredients) {
+        if (!ing.amount || isNaN(ing.amount)) {
+          alert(`Invalid amount for ${ing.name}`)
+          return
         }
       }
-
-      const newRecipe = {
+      const payload = {
         name: this.recipe.name,
-        source: "",
+        source: '',
         steps: this.recipe.steps,
-        ingredients: this.recipe.ingredients.map(ing => ({
-          id: ing.id,
-          name: ing.name,
-          amount: ing.amount,
-          unit: ing.unit
-        })),
-        types: this.recipe.types.map(type => type.id)
-      };
-
+        ingredients: this.recipe.ingredients,
+        types: this.recipe.types.map(t => t.id)
+      }
       try {
-        if (this.$route.params.id) {
-          await axios.put(`http://localhost:5000/api/recipes/edit/${this.recipe.id}`, newRecipe);
+        if (this.recipeId) {
+          await axios.put(`http://localhost:5000/api/recipes/edit/${this.recipe.id}`, payload)
         } else {
-          // Adding a new recipe: use POST
-          const response = await axios.post(`http://localhost:5000/api/recipes/add`, newRecipe);
-          // Optionally, update the recipe id after creation
-          this.recipe.id = response.data.recipe_id;
+          const res = await axios.post(`http://localhost:5000/api/recipes/add`, payload)
+          this.recipe.id = res.data.recipe_id
         }
-
-        this.$router.push({ name: 'recipe-detail', params: { id: this.recipe.id } });
-      } catch (error) {
-        console.error("There is an error while saving the recipe", error);
+        this.$router.push({
+          name: 'recipe-detail',
+          params: { id: this.recipe.id }
+        })
+      } catch (e) {
+        console.error('Error saving recipe:', e)
       }
     },
-    addToShoppingList() {
-      console.log('Added to shopping list:', this.recipe.ingredients);
-      // Send ingredients to shopping list feature
-    },
+    // addToShoppingList() {
+    //   console.log('Adding ingredients to shopping list:', this.recipe.ingredients)
+    // },
     setHeight() {
-      const textarea = this.$refs.textareaEl;
-      textarea.style.height = "";               // Reset the height
-      textarea.style.height = `${textarea.scrollHeight}px`; // Set height to fit content
+      const textarea = this.$refs.textareaEl
+      if (textarea) {
+        textarea.style.height = ''
+        textarea.style.height = `${textarea.scrollHeight}px`
+      }
     }
-  },
-};
+  }
+}
 </script>
-
 <style scoped>
-.recipe-detail {
-  max-width: 100%;
-  margin: 0 auto;
+:root {
+  --bg-color: #1f1f1f;
+  --card-bg: #2a2a2a;
+  --primary: #620ea;
+  --primary-hover: #7e30ff;
+  --text-color: #e0e0e0;
+  --border-color: #555;
 }
 
-.hero-image {
+/* Outer Container */
+.recipe-detail {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  width: 100%;
+  border-radius: 10px;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Hero Section */
+.hero {
   position: relative;
   width: 100%;
   height: 600px;
-}
-
-.hero-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.hero-image .overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  color: white;
-  display: flex;
-  flex-direction: column;
-  justify-content: end;
-  align-items: flex-start;
-  padding: 20px;
-}
-
-.hero-image .overlay .edit-input {
-  background: transparent;
-  border: none;
-  color: white;
-  font-size: 2.5em;
-  font-weight: bold;
-  margin-bottom: 10px;
-  outline: none;
-}
-
-.types input {
-  font-size: 1.2em;
-  text-align: center;
-  padding: 5px;
-  width: 100%;
-  border: none;
-  background: #f3f3f3;
-}
-
-.ingredients, .instructions, .cta-buttons {
-  padding: 20px;
   margin-bottom: 20px;
 }
 
-.ingredients ul, .instructions ol {
-  list-style-type: none;
-  padding-left: 0;
+.hero-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.9;
 }
 
+.hero-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 10px 0;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.recipe-title {
+  background: transparent;
+  border: none;
+  color: var(--text-color);
+  font-size: 1.8em;
+  font-weight: bold;
+  margin: 5px 10px 10px;
+  width: 90%;
+}
+
+.recipe-title::placeholder {
+  color: #aaa;
+}
+
+.recipe-timer {
+  margin: 5px 15px 0;
+  border-radius: 5px;
+  font-size: 0.9em;
+}
+
+/* Content Section */
+.content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.manual-entry, .extract {
+  background-color: var(--card-bg);
+  padding: 0 15px;
+  border-radius: 8px;
+}
+
+/* Section Headings */
+.manual-entry h1,
+.extract h1 {
+  margin-bottom: 15px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 1.5em;
+}
+
+h2 {
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 1.2em;
+}
+
+/* Inputs & Textareas */
+.input-field,
+.textarea-field {
+  width: 100%;
+  padding: 12px 8px;
+  background-color: #444;
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 1em;
+}
+
+.input-field.small {
+  width: 60px;
+}
+
+.textarea-field {
+  min-height: 120px;
+  resize: vertical;
+}
+
+/* Button Groups */
+.button-group, .cta-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.recipe-manual-buttons {
+  flex: 1;
+  display: flex;
+  justify-content: start;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.cta-buttons {
+  margin: 15px 0 15px 15px;
+  gap: 20px;
+}
+
+.recipe-extract-buttons {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+/* Unified Button Styles */
+.btn,
+.file-label,
+.cta-btn {
+  background-color: var(--primary);
+  border: 1px solid grey;
+  color: #fff;
+  border-radius: 8px;
+  padding: 10px 15px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  font-size: 1em;
+  margin-bottom: 10px;
+  margin-top: 10px;
+}
+
+button.selected {
+  color: white;
+  border-color: #008CBA;
+}
+
+.delete-btn {
+  border-radius: 100%;
+  border: none;
+  margin: 0;
+}
+
+.save-btn,
+.file-label,
+.process-btn {
+  border-color: #747bff;
+  margin: 10px 0;
+}
+
+.file-label {
+  padding: 8px 15px;
+}
+
+.file-label input {
+  display: none;
+}
+
+.btn:hover,
+.file-label:hover,
+.cta-btn:hover {
+  background-color: #1a1a1a;
+  border-color: #747bff;
+}
+
+.delete-btn:hover {
+  background-color: rgba(50, 50, 50, 0.75);
+}
+
+.save-btn:hover,
+.file-label:hover {
+  border-color: #7e30ff;
+}
+
+/* Ingredient List */
 .ingredient-list {
   list-style: none;
+  margin: 0;
   padding: 0;
 }
 
 .ingredient-item {
   display: flex;
-  padding: 10px;
-  border-radius: 8px;
-  margin-bottom: 8px;
-  width: 100%;
+  align-items: center;
+  gap: 10px;
+  background-color: #333;
+  padding: 5px 10px 5px 15px;
+  margin: 10px 0;
+  border-radius: 10px;
+  width: 75%;
 }
 
 .ingredient-name {
-  flex: 0.5;
-  font-weight: 500;
-  padding-left: 5px;
-}
-
-.edit-input {
-  padding: 5px;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  font-size: 1em;
-}
-
-.title-input {
-  padding: 5px;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  font-size: 1em;
-  width: 100%
-}
-
-.edit-input.small {
-  width: 40%;
-}
-
-.edit-input.very-small {
-  width: 60px;
-  text-align: center;
-}
-
-.edit-textarea {
-  width: 100%;
-  padding: 5px;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  font-size: 1.2em;
-  resize: none;
-  overflow: auto;
-}
-
-
-.delete-btn {
-  background: red;
-  color: white;
-  border: none;
-  padding: 5px 10px;
-  cursor: pointer;
-  font-weight: bold;
-  border-radius: 5px;
-}
-
-.add-btn {
-  background: green;
-  color: white;
-  border: none;
-  padding: 10px;
-  cursor: pointer;
-  border-radius: 5px;
-  margin-top: 10px;
-}
-
-.cta-buttons button {
-  padding: 10px 20px;
-  font-size: 1em;
-  background-color: #008CBA;
-  color: white;
-  border: none;
-  cursor: pointer;
-  margin-right: 10px;
-}
-
-.cta-buttons button:hover {
-  background-color: #005f75;
-}
-
-.recipe-container {
-  display: flex;
-  gap: 20px;
-}
-
-.instructions {
   flex: 1;
+  font-weight: bold;
 }
 
-.instructions {
-  padding: 20px;
-  border-radius: 8px;
-  max-width: 50%;
+/* Image Preview */
+.image-preview {
   position: relative;
-}
-
-.type-buttons {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
+  justify-content: center;
+  align-items: center;
+  margin: 0 auto; /* Centers only the image preview */
+  width: fit-content;
+
 }
 
-.type-buttons button {
-  padding: 10px 15px;
-  border: 1px solid #ccc;
+.image-preview img {
+  display: block;
+  width: 500px;
+  border-radius: 4px;
+}
+
+.delete-image-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: transparent;
+  color: #2a2a2a;
+  font-size: 32px;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  border-radius: 5px;
-  transition: 0.3s;
+  transition: background-color 0.3s ease;
+  box-sizing: border-box;
 }
 
-.type-buttons button.selected {
-  color: white;
-  border-color: #008CBA;
+/* Fullscreen Overlay */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(50, 50, 50, 0.3); /* Darkened Background */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+/* Loading Spinner */
+.loader {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(255, 255, 255, 0.3);
+  border-top: 5px solid #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Spinner Animation */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 </style>

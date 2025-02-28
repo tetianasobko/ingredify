@@ -7,12 +7,6 @@
 
 
 <script>
-import {defineComponent} from "vue";
-import RecipeList from "./components/RecipeList.vue";
-
-export default defineComponent({
-  components: {RecipeList}
-})
 </script>
 
 <style>

@@ -4,7 +4,6 @@ import './style.css'
 import App from './App.vue'
 import RecipeItem from './components/RecipeItem.vue'
 import RecipeList from "./components/RecipeList.vue";
-import IngredientForm from "./components/IngredientForm.vue";
 import RecipeDetail from "./components/RecipeDetail.vue";
 import RecipeForm from "./components/RecipeForm.vue";
 

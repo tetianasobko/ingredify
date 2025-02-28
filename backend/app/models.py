@@ -61,7 +61,7 @@ class RecipeIngredient(db.Model):
     ingredient_id = db.Column(db.Integer, db.ForeignKey('ingredient.id'),
                               nullable=False)
     amount = db.Column(db.Float, nullable=False)
-    unit = db.Column(db.String(50), nullable=False)
+    unit = db.Column(db.String(50))
 
     recipe = db.relationship('Recipe', back_populates='ingredients')
     ingredient = db.relationship('Ingredient', back_populates='recipes')
