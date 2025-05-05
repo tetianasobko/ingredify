@@ -72,6 +72,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'ingredify_service.wsgi.application'
 
+AUTH_USER_MODEL = 'user.User'
+
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
