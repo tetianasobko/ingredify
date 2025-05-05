@@ -1,5 +1,7 @@
 from django.db import models
 
+from ingredify_service import settings
+
 
 # Units for ingredients
 class Unit(models.TextChoices):
@@ -13,6 +15,9 @@ class Unit(models.TextChoices):
 # Recipe
 class Recipe(models.Model):
     title = models.CharField(max_length=255)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE
+    )
     cooking_time = models.IntegerField()
     prep_time = models.IntegerField()
     servings = models.IntegerField()
