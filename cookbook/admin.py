@@ -9,7 +9,15 @@ class IngredientInline(admin.TabularInline):
 
 @admin.register(Recipe)
 class RecipeAdmin(admin.ModelAdmin):
-    list_display = ("title", "difficulty", "cooking_time", "prep_time", "servings", "date_added")
+    list_display = (
+        "title",
+        "user",
+        "difficulty",
+        "cooking_time",
+        "prep_time",
+        "servings",
+        "date_added"
+    )
     search_fields = ("title", "ingredients__name")
     list_filter = ("difficulty", "date_added")
     inlines = [IngredientInline]

@@ -19,7 +19,7 @@ from django.urls import path, include
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/ingredify/", include("ingredify.urls", namespace="ingredify")),
+    path("api/cookbook/", include("cookbook.urls", namespace="ingredify")),
     path(
         "api/shopping-list/",
         include("shopping_list.urls", namespace="shopping_list")

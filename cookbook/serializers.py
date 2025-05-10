@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
 
-from ingredify.models import Ingredient, Recipe
+from .models import Ingredient, Recipe
 
 
 class IngredientSerializer(serializers.ModelSerializer):
@@ -12,9 +12,12 @@ class IngredientSerializer(serializers.ModelSerializer):
 
 class RecipeSerializer(serializers.ModelSerializer):
     ingredients = IngredientSerializer(many=True)
+
     class Meta:
         model = Recipe
-        fields = ("id", "title", "cooking_time", "prep_time", "servings", "difficulty", "date_added", "instructions", "ingredients")
+        fields = (
+        "id", "title", "cooking_time", "prep_time", "servings", "difficulty",
+        "date_added", "instructions", "ingredients")
 
     @transaction.atomic
     def create(self, validated_data):
@@ -23,6 +26,7 @@ class RecipeSerializer(serializers.ModelSerializer):
         for ingredient_data in ingredients_data:
             Ingredient.objects.create(recipe=recipe, **ingredient_data)
         return recipe
+
 
 class RecipeListSerializer(RecipeSerializer):
     class Meta:
@@ -35,4 +39,14 @@ class RecipeDetailSerializer(RecipeSerializer):
 
     class Meta:
         model = Recipe
-        fields = ("id", "title", "cooking_time", "prep_time", "servings", "difficulty", "date_added", "instructions", "ingredients")
+        fields = (
+        "id",
+        "title",
+        "cooking_time",
+        "prep_time",
+        "servings",
+        "difficulty",
+        "date_added",
+        "instructions",
+        "ingredients"
+        )

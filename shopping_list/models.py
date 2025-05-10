@@ -1,6 +1,6 @@
 from django.db import models
 
-from ingredify.models import Unit
+from cookbook.models import Unit
 from ingredify_service import settings
 
 
