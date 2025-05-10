@@ -15,30 +15,21 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Recipe',
+            name='ShoppingList',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('title', models.CharField(max_length=255)),
-                ('cooking_time', models.IntegerField()),
-                ('prep_time', models.IntegerField()),
-                ('servings', models.IntegerField()),
-                ('difficulty', models.CharField(max_length=50)),
-                ('date_added', models.DateTimeField(auto_now_add=True)),
-                ('instructions', models.TextField()),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='shopping_list', to=settings.AUTH_USER_MODEL)),
             ],
-            options={
-                'ordering': ['-date_added'],
-            },
         ),
         migrations.CreateModel(
-            name='Ingredient',
+            name='ShoppingListItem',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('name', models.CharField(max_length=255)),
                 ('quantity', models.FloatField()),
                 ('unit', models.CharField(choices=[('g', 'gram'), ('ml', 'milliliter'), ('tsp', 'teaspoon'), ('tbsp', 'tablespoon'), ('pc', 'piece')], max_length=20)),
-                ('recipe', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='ingredients', to='ingredify.recipe')),
+                ('checked', models.BooleanField(default=False)),
+                ('shopping_list', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='items', to='shopping_list.shoppinglist')),
             ],
             options={
                 'ordering': ['name'],
