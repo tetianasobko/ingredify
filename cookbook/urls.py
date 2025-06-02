@@ -6,7 +6,8 @@ from .views import (
     DietaryRestrictionViewSet,
     MealTypeListView,
     UnitListView,
-    DifficultyListView
+    DifficultyListView,
+    RecipeImageAIView
 )
 
 router = DefaultRouter()
@@ -17,6 +18,7 @@ urlpatterns = [
     path("units/", UnitListView.as_view(), name="units"),
     path("difficulties/", DifficultyListView.as_view(), name="difficulties"),
     path("meal-types/", MealTypeListView.as_view(), name="meal-types"),
+    path("process-image/", RecipeImageAIView.as_view(), name="process-image"),
 ]
 
 app_name = "cookbook"
