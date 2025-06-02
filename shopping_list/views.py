@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import mixins, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -6,7 +6,13 @@ from .models import ShoppingListItem, ShoppingList
 from .serializers import ShoppingListItemSerializer
 
 
-class ShoppingListItemViewSet(viewsets.ModelViewSet):
+class ShoppingListItemViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet
+):
     serializer_class = ShoppingListItemSerializer
     permission_classes = [IsAuthenticated]
 
