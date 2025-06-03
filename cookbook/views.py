@@ -74,9 +74,59 @@ class RecipeViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
-class RecipeImageAIView(views.APIView):
+class BaseRecipeAIView(views.APIView):
     permission_classes = [IsAuthenticated]
 
+    def get_recipe_constraints(self):
+        units = list(Unit.values)
+        difficulties = list(Difficulty.values)
+        meal_types = list(MealType.values)
+        dietary_restrictions = list(
+            DietaryRestriction.objects.values_list("id", "slug")
+        )
+
+        json_output = {
+            "title": "string",
+            "cooking_time": 0,
+            "prep_time": 0,
+            "servings": 0,
+            "difficulty": "string",
+            "instructions": "string",
+            "ingredients": [
+                {
+                    "name": "string",
+                    "quantity": 0,
+                    "unit": "string"
+                }
+            ],
+            "meal_type": "string",
+            "dietary_restrictions": [0]
+        }
+
+        return {
+            "units": units,
+            "difficulties": difficulties,
+            "meal_types": meal_types,
+            "dietary_restrictions": dietary_restrictions,
+            "json_output": json_output
+        }
+
+    def process_with_ai(self, messages):
+        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        completion = client.chat.completions.create(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            messages=messages,
+            temperature=0.5,
+            max_completion_tokens=1024,
+            top_p=1,
+            stream=False,
+            response_format={"type": "json_object"},
+            stop=None,
+        )
+        return completion.choices[0].message.content
+
+
+class RecipeImageAIView(BaseRecipeAIView):
     @extend_schema(
         request={
             'multipart/form-data': {
@@ -105,41 +155,18 @@ class RecipeImageAIView(views.APIView):
                 base64_image = base64.b64encode(image_data).decode("utf-8")
                 base64_images.append(base64_image)
 
-            units = list(Unit.values)
-            difficulties = list(Difficulty.values)
-            meal_types = list(MealType.values)
-            dietary_restrictions = list(
-                DietaryRestriction.objects.values_list("slug", flat=True)
-            )
-
-            json_output = {
-                "title": "string",
-                "cooking_time": 0,
-                "prep_time": 0,
-                "servings": 0,
-                "difficulty": "string",
-                "instructions": "string",
-                "ingredients": [
-                    {
-                        "name": "string",
-                        "quantity": 0,
-                        "unit": "string"
-                    }
-                ],
-                "meal_type": "string",
-                "dietary_restrictions": [0]
-            }
-
+            constraints = self.get_recipe_constraints()
             prompt = (
-                f"Extract the following structured data in JSON format from the recipe below. Make sure to follow these strict rules:\n"
-                f"JSON Format:\n"
-                f"{json.dumps(json_output)}"
-                f"Constraints:\n"
-                f"difficulty must be one of: {', '.join(difficulties)}\n"
-                f"meal_type must be one of: {', '.join(meal_types)}\n"
-                f"unit must be one of: {', '.join(units)}\n"
-                f"dietary_restrictions must be a list of integers representing IDs from list: {dietary_restrictions}\n"
-                f"Do not include any values outside these allowed options. Use reasonable approximations if exact units or labels are not mentioned in the text."
+                f"Extract recipe data in JSON format following these strict rules:\n\n"
+                f"1. Use only these units: {', '.join(constraints['units'])}\n"
+                f"2. Convert common units to allowed units:\n"
+                f"   - Use 'pc' (piece) for: cloves, slices, whole items\n"
+                f"   - Convert volume units to 'ml'\n"
+                f"   - Convert weight units to 'g'\n"
+                f"3. Difficulty must be one of: {', '.join(constraints['difficulties'])}\n"
+                f"4. Meal type must be one of: {', '.join(constraints['meal_types'])}\n"
+                f"5. Dietary restrictions IDs from: {constraints['dietary_restrictions']}\n\n"
+                f"Expected JSON format:\n{json.dumps(constraints['json_output'], indent=2)}"
             )
 
             messages = [
@@ -154,7 +181,6 @@ class RecipeImageAIView(views.APIView):
                 }
             ]
 
-            # Add each image to the message content
             for base64_image in base64_images:
                 messages[0]["content"].append({
                     "type": "image_url",
@@ -163,29 +189,76 @@ class RecipeImageAIView(views.APIView):
                     }
                 })
 
-            client = Groq(
-                api_key=os.environ.get("GROQ_API_KEY"),
-            )
-
-            completion = client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                messages=messages,
-                temperature=1,
-                max_completion_tokens=1024,
-                top_p=1,
-                stream=False,
-                response_format={"type": "json_object"},
-                stop=None,
-            )
-
-            recipe = completion.choices[0].message.content
-
+            recipe = self.process_with_ai(messages)
             data = json.loads(recipe)
             return Response({
                 "message": f"{len(base64_images)} images processed successfully",
                 "data": data,
             }, status=status.HTTP_200_OK
             )
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class RecipeTextAIView(BaseRecipeAIView):
+    @extend_schema(
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'text': {'type': 'string'}
+                },
+                'required': ['text']
+            }
+        }
+    )
+    def post(self, request):
+        text = request.data.get("text")
+        if not text:
+            return Response(
+                {"error": "No text provided"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            constraints = self.get_recipe_constraints()
+            prompt = (
+                f"Extract recipe data in JSON format following these strict rules:\n\n"
+                f"1. Use only these units: {', '.join(constraints['units'])}\n"
+                f"2. Convert common units to allowed units:\n"
+                f"   - Use 'pc' (piece) for: cloves, slices, whole items\n"
+                f"3. Difficulty must be one of: {', '.join(constraints['difficulties'])}\n"
+                f"4. Meal type must be one of: {', '.join(constraints['meal_types'])}\n"
+                f"5. Dietary restrictions IDs from: {constraints['dietary_restrictions']}\n\n"
+                f"Expected JSON format:\n{json.dumps(constraints['json_output'], indent=2)}"
+            )
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt
+                        },
+                        {
+                            "type": "text",
+                            "text": text
+                        }
+                    ]
+                }
+            ]
+
+            recipe = self.process_with_ai(messages)
+            data = json.loads(recipe)
+            return Response({
+                "message": "Text processed successfully",
+                "data": data,
+            }, status=status.HTTP_200_OK)
+
         except Exception as e:
             return Response(
                 {"error": str(e)},
