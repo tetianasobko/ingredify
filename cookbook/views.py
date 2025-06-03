@@ -12,7 +12,8 @@ from .models import Recipe, DietaryRestriction, MealType, Unit, Difficulty
 from .serializers import (
     RecipeSerializer,
     RecipeListSerializer,
-    DietaryRestrictionSerializer
+    DietaryRestrictionSerializer,
+    DietaryRestrictionListSerializer
 )
 
 
@@ -45,13 +46,24 @@ class DietaryRestrictionViewSet(
 
     def get_serializer_class(self):
         if self.action in ("list", "retrieve"):
-            return DietaryRestrictionSerializer
+            return DietaryRestrictionListSerializer
         return DietaryRestrictionSerializer
 
 
 class RecipeViewSet(viewsets.ModelViewSet):
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()  # Get the base queryset
+        queryset = queryset.prefetch_related("dietary_restrictions")
+
+        if self.action == "retrieve":
+            return queryset.prefetch_related(
+                "ingredients"
+            )
+
+        return queryset
 
     def get_serializer_class(self):
         if self.action == "list":
