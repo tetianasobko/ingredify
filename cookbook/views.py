@@ -129,15 +129,15 @@ class BaseRecipeAIView(views.APIView):
 class RecipeImageAIView(BaseRecipeAIView):
     @extend_schema(
         request={
-            'multipart/form-data': {
-                'type': 'object',
-                'properties': {
-                    'images': {
-                        'type': 'array',
-                        'items': {'type': 'string', 'format': 'binary'},
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {
+                    "images": {
+                        "type": "array",
+                        "items": {"type": "string", "format": "binary"},
                     },
                 },
-                'required': ['images']
+                "required": ["images"]
             }
         }
     )
@@ -206,12 +206,12 @@ class RecipeImageAIView(BaseRecipeAIView):
 class RecipeTextAIView(BaseRecipeAIView):
     @extend_schema(
         request={
-            'application/json': {
-                'type': 'object',
-                'properties': {
-                    'text': {'type': 'string'}
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"}
                 },
-                'required': ['text']
+                "required": ["text"]
             }
         }
     )
@@ -258,6 +258,54 @@ class RecipeTextAIView(BaseRecipeAIView):
                 "message": "Text processed successfully",
                 "data": data,
             }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ChatAIView(views.APIView):
+    @extend_schema(
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "messages": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "role": {
+                                    "type": "string",
+                                    "enum": ["user", "assistant"]
+                                },
+                                "content": {"type": "string"}
+                            }
+                        }
+                    }
+                },
+                "required": ["messages"]
+            }
+        },
+        responses={200: {"type": "object"}}
+    )
+    def post(self, request):
+        try:
+            client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+            completion = client.chat.completions.create(
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                messages=request.data["messages"],
+                temperature=0.7,
+                max_completion_tokens=1024,
+                top_p=1,
+                stream=False,
+            )
+
+            response = completion.choices[0].message.content
+            return Response({"message": response}, status=status.HTTP_200_OK)
 
         except Exception as e:
             return Response(
