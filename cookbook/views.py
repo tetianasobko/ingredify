@@ -161,11 +161,10 @@ class RecipeImageAIView(BaseRecipeAIView):
                 f"1. Use only these units: {', '.join(constraints['units'])}\n"
                 f"2. Convert common units to allowed units:\n"
                 f"   - Use 'pc' (piece) for: cloves, slices, whole items\n"
-                f"   - Convert volume units to 'ml'\n"
-                f"   - Convert weight units to 'g'\n"
-                f"3. Difficulty must be one of: {', '.join(constraints['difficulties'])}\n"
-                f"4. Meal type must be one of: {', '.join(constraints['meal_types'])}\n"
-                f"5. Dietary restrictions IDs from: {constraints['dietary_restrictions']}\n\n"
+                f"3. ALL numbers must be decimal values (no fractions)"
+                f"4. Difficulty must be one of: {', '.join(constraints['difficulties'])}\n"
+                f"5. Meal type must be one of: {', '.join(constraints['meal_types'])}\n"
+                f"6. Dietary restrictions IDs from: {constraints['dietary_restrictions']}\n\n"
                 f"Expected JSON format:\n{json.dumps(constraints['json_output'], indent=2)}"
             )
 
@@ -230,9 +229,10 @@ class RecipeTextAIView(BaseRecipeAIView):
                 f"1. Use only these units: {', '.join(constraints['units'])}\n"
                 f"2. Convert common units to allowed units:\n"
                 f"   - Use 'pc' (piece) for: cloves, slices, whole items\n"
-                f"3. Difficulty must be one of: {', '.join(constraints['difficulties'])}\n"
-                f"4. Meal type must be one of: {', '.join(constraints['meal_types'])}\n"
-                f"5. Dietary restrictions IDs from: {constraints['dietary_restrictions']}\n\n"
+                f"3. ALL numbers must be decimal values (no fractions)"
+                f"4. Difficulty must be one of: {', '.join(constraints['difficulties'])}\n"
+                f"5. Meal type must be one of: {', '.join(constraints['meal_types'])}\n"
+                f"6. Dietary restrictions IDs from: {constraints['dietary_restrictions']}\n\n"
                 f"Expected JSON format:\n{json.dumps(constraints['json_output'], indent=2)}"
             )
 
