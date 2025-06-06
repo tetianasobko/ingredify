@@ -361,7 +361,11 @@ def get_prices(products: list[str]) -> list[dict]:
 
 
 def handle_recipes_response(response_data: list[dict]) -> dict:
-    return {"recipes": [recipe.get("id") for recipe in response_data if "id" in recipe]}
+    return {
+        "recipes": [
+            recipe.get("id") for recipe in response_data if "id" in recipe
+        ]
+    }
 
 
 class ChatAIView(views.APIView):
@@ -394,7 +398,9 @@ class ChatAIView(views.APIView):
             incoming = request.data.get("messages")
             if not isinstance(incoming, list) or not incoming:
                 return Response(
-                    {"error": "Payload must include a non-empty 'messages' list."},
+                    {
+                        "error": "Payload must include a non-empty 'messages' list."
+                    },
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -409,7 +415,9 @@ class ChatAIView(views.APIView):
                 f"Respond in {user_lang} language."
             )
 
-            messages = [{"role": "system", "content": system_prompt}] + incoming
+            messages = [
+                {"role": "system", "content": system_prompt}
+            ] + incoming
 
             tools = [
                 {
@@ -456,7 +464,12 @@ class ChatAIView(views.APIView):
                     "type": "function",
                     "function": {
                         "name": "get_prices",
-                        "description": "Get average price for each ingredient. Must match the user's query language",
+                        "description": (
+                            "Get average price for each ingredient."
+                            "Do not return ranges."
+                            "Must match the user's query language."
+                            "Convert the product name to singular form"
+                        ),
                         "parameters": {
                             "type": "object",
                             "properties": {
@@ -512,13 +525,13 @@ class ChatAIView(views.APIView):
             )
 
     def _run_tools_and_respond(
-        self,
-        client,
-        model: str,
-        messages: list,
-        initial_message,
-        tool_calls: list,
-        tools: list
+            self,
+            client,
+            model: str,
+            messages: list,
+            initial_message,
+            tool_calls: list,
+            tools: list
     ) -> Response:
         available_functions = {
             "get_recipes": get_recipes,
@@ -543,7 +556,9 @@ class ChatAIView(views.APIView):
             function_response = function_to_call(**function_args)
 
             additional_messages.update(
-                handlers[function_name](function_response)
+                handlers[function_name](
+                    function_response
+                ) if function_name in handlers else {}
             )
 
             messages.append({
