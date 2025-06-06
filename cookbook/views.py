@@ -1,12 +1,15 @@
 import json
 import os
 import base64
+import re
+import requests
 
 from rest_framework import viewsets, mixins, views, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from groq import Groq
 from drf_spectacular.utils import extend_schema
+from urllib.parse import quote_plus
 
 from .models import Recipe, DietaryRestriction, MealType, Unit, Difficulty
 from .serializers import (
@@ -149,12 +152,6 @@ class RecipeImageAIView(BaseRecipeAIView):
             )
 
         try:
-            base64_images = []
-            for image in request.FILES.getlist("images"):
-                image_data = image.read()
-                base64_image = base64.b64encode(image_data).decode("utf-8")
-                base64_images.append(base64_image)
-
             constraints = self.get_recipe_constraints()
             prompt = (
                 f"Extract recipe data in JSON format following these strict rules:\n\n"
@@ -180,7 +177,9 @@ class RecipeImageAIView(BaseRecipeAIView):
                 }
             ]
 
-            for base64_image in base64_images:
+            for image in request.FILES.getlist("images"):
+                image_data = image.read()
+                base64_image = base64.b64encode(image_data).decode("utf-8")
                 messages[0]["content"].append({
                     "type": "image_url",
                     "image_url": {
@@ -191,7 +190,6 @@ class RecipeImageAIView(BaseRecipeAIView):
             recipe = self.process_with_ai(messages)
             data = json.loads(recipe)
             return Response({
-                "message": f"{len(base64_images)} images processed successfully",
                 "data": data,
             }, status=status.HTTP_200_OK
             )
@@ -306,6 +304,66 @@ def get_recipes(
     )[:10]
 
 
+_UA_CHAR_PATTERN = re.compile(r"[А-Яа-яЄєІіЇїҐґ]")
+
+
+def is_ukrainian(text: str) -> bool:
+    return bool(_UA_CHAR_PATTERN.search(text))
+
+
+def detect_language(text: str) -> str:
+    return "uk" if is_ukrainian(text) else "en"
+
+
+def get_prices(products: list[str]) -> list[dict]:
+    session = requests.Session()
+    store_id = "48201070"
+    base_url = f"https://stores-api.zakaz.ua/stores/{store_id}/products/search/"
+
+    results: list[dict] = []
+
+    for raw_name in products:
+        lang = detect_language(raw_name)
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+            "Accept-Language": lang,
+        }
+
+        query_string = quote_plus(raw_name)
+        url = f"{base_url}?q={query_string}"
+
+        try:
+            resp = session.get(url, headers=headers, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            continue
+
+        for prod_item in data.get("results", [])[:5]:
+            title = prod_item.get("title")
+            price_cents = prod_item.get("price")
+            unit = prod_item.get("unit", "")
+            weight = prod_item.get("weight", "")
+
+            if title is None or price_cents is None:
+                continue
+
+            results.append({
+                "title": title,
+                "price": price_cents / 100,
+                "currency": "uah",
+                "unit": unit,
+                "weight": weight,
+            })
+
+    return results
+
+
+def handle_recipes_response(response_data: list[dict]) -> dict:
+    return {"recipes": [recipe.get("id") for recipe in response_data if "id" in recipe]}
+
+
 class ChatAIView(views.APIView):
     @extend_schema(
         request={
@@ -333,8 +391,26 @@ class ChatAIView(views.APIView):
     )
     def post(self, request):
         try:
-            client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-            model = "meta-llama/llama-4-scout-17b-16e-instruct"
+            incoming = request.data.get("messages")
+            if not isinstance(incoming, list) or not incoming:
+                return Response(
+                    {"error": "Payload must include a non-empty 'messages' list."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            user_lang = detect_language(incoming[0].get("content", ""))
+
+            system_prompt = (
+                "You are a helpful cooking assistant. "
+                "Always respond in the same language the user uses. "
+                "Never transliterate or change the script of product names. "
+                "For example, if the user writes 'йогурт з манго' in Ukrainian, keep it exactly "
+                "in Ukrainian Cyrillic. "
+                f"Respond in {user_lang} language."
+            )
+
+            messages = [{"role": "system", "content": system_prompt}] + incoming
+
             tools = [
                 {
                     "type": "function",
@@ -371,6 +447,22 @@ class ChatAIView(views.APIView):
                                 "ingredients": {
                                     "type": "array",
                                     "items": {"type": "string"}
+                                },
+                            }
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_prices",
+                        "description": "Get average price for each ingredient. Must match the user's query language",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "products": {
+                                    "type": "array",
+                                    "items": {"type": "string"}
                                 }
                             }
                         }
@@ -378,15 +470,16 @@ class ChatAIView(views.APIView):
                 }
             ]
 
-            messages = [
-                {
-                    "role": "system",
-                    "content": "You are a helpful cooking assistant."
-                },
-                *request.data["messages"]
-            ]
+            api_key = os.environ.get("GROQ_API_KEY")
+            if not api_key:
+                return Response(
+                    {"error": "GROQ_API_KEY is not set in the environment."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            client = Groq(api_key=api_key)
+            model = "meta-llama/llama-4-scout-17b-16e-instruct"
 
-            response = client.chat.completions.create(
+            first_response = client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=0.7,
@@ -395,49 +488,80 @@ class ChatAIView(views.APIView):
                 tool_choice="auto"
             )
 
-            response_message = response.choices[0].message
+            message_obj = first_response.choices[0].message
 
-            if response_message.tool_calls:
-                tool_calls = response_message.tool_calls
-                messages.append(response_message)
-
-                available_functions = {
-                    "get_recipes": get_recipes,
-                }
-
-                for tool_call in tool_calls:
-                    function_name = tool_call.function.name
-                    function_to_call = available_functions[function_name]
-                    function_args = json.loads(tool_call.function.arguments)
-                    function_response = function_to_call(**function_args)
-
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "content": str(function_response),
-                            "tool_call_id": tool_call.id,
-                        }
-                    )
-
-                final_response = client.chat.completions.create(
-                    model=model, messages=messages, tools=tools,
-                    tool_choice="auto", max_completion_tokens=4096
+            if not getattr(message_obj, "tool_calls", None):
+                return Response(
+                    {"message": message_obj.content},
+                    status=status.HTTP_200_OK
                 )
 
-                return Response({
-                    "message": final_response.choices[0].message.content,
-                    "recipe_ids": [
-                        recipe["id"] for recipe in function_response
-                    ]
-                }, status=status.HTTP_200_OK)
+            return self._run_tools_and_respond(
+                client=client,
+                model=model,
+                messages=messages,
+                initial_message=message_obj,
+                tool_calls=message_obj.tool_calls,
+                tools=tools
+            )
 
-            # For non-recipe queries, just return the response
-            return Response({
-                "message": response_message.content,
-            }, status=status.HTTP_200_OK)
-
-        except Exception as e:
+        except Exception as exc:
             return Response(
-                {"error": str(e)},
+                {"error": str(exc)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    def _run_tools_and_respond(
+        self,
+        client,
+        model: str,
+        messages: list,
+        initial_message,
+        tool_calls: list,
+        tools: list
+    ) -> Response:
+        available_functions = {
+            "get_recipes": get_recipes,
+            "get_prices": get_prices,
+        }
+
+        handlers = {
+            "get_recipes": handle_recipes_response
+        }
+
+        messages.append({
+            "role": "assistant",
+            "content": initial_message.content or "",
+            "tool_calls": [tc.to_dict() for tc in tool_calls]
+        })
+
+        additional_messages = {}
+        for tool_call in tool_calls:
+            function_name = tool_call.function.name
+            function_to_call = available_functions[function_name]
+            function_args = json.loads(tool_call.function.arguments)
+            function_response = function_to_call(**function_args)
+
+            additional_messages.update(
+                handlers[function_name](function_response)
+            )
+
+            messages.append({
+                "role": "tool",
+                "content": json.dumps(function_response),
+                "tool_call_id": tool_call.id
+            })
+
+        final_resp = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            max_completion_tokens=4096
+        )
+
+        final_message = final_resp.choices[0].message.content
+
+        combined_output = {"message": final_message, **additional_messages}
+
+        return Response(combined_output, status=status.HTTP_200_OK)
