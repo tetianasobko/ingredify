@@ -3,6 +3,7 @@ import os
 import base64
 import re
 import requests
+from django.db.models.functions.text import Lower
 
 from rest_framework import viewsets, mixins, views, status
 from rest_framework.response import Response
@@ -11,6 +12,7 @@ from groq import Groq
 from drf_spectacular.utils import extend_schema
 from urllib.parse import quote_plus
 
+from shopping_list.models import ShoppingList, ShoppingListItem
 from .models import Recipe, DietaryRestriction, MealType, Unit, Difficulty
 from .serializers import (
     RecipeSerializer,
@@ -276,7 +278,6 @@ def get_recipes(
     queryset = Recipe.objects.all()
     filters = {}
 
-    # Type conversion and validation
     if title:
         filters["title__icontains"] = str(title)
     if cook_time:
@@ -292,7 +293,7 @@ def get_recipes(
     if ingredients:
         filters["ingredients__name__in"] = ingredients
 
-    return queryset.filter(**filters).distinct().values(
+    return list(queryset.filter(**filters).distinct().values(
         "id",
         "title",
         "cooking_time",
@@ -301,7 +302,7 @@ def get_recipes(
         "meal_type",
         "dietary_restrictions__name",
         "ingredients__name"
-    )[:10]
+    )[:10])
 
 
 _UA_CHAR_PATTERN = re.compile(r"[А-Яа-яЄєІіЇїҐґ]")
@@ -315,7 +316,7 @@ def detect_language(text: str) -> str:
     return "uk" if is_ukrainian(text) else "en"
 
 
-def get_prices(products: list[str]) -> list[dict]:
+def get_product_prices(products: list[str]) -> list[dict]:
     session = requests.Session()
     store_id = "48201070"
     base_url = f"https://stores-api.zakaz.ua/stores/{store_id}/products/search/"
@@ -358,6 +359,38 @@ def get_prices(products: list[str]) -> list[dict]:
             })
 
     return results
+
+
+def get_prices_for_recipe_titles(recipe_titles: list[str]):
+    lowered_titles = [title.lower() for title in recipe_titles]
+
+    recipes = list(
+        Recipe.objects.annotate(lower_title=Lower("title"))
+        .filter(lower_title__in=lowered_titles)
+    )
+
+    response = []
+
+    for recipe in recipes:
+        recipe_data = {
+            "id": recipe.id,
+            "title": recipe.title,
+            "ingredients": []
+        }
+
+        for ingredient in recipe.ingredients.all():
+            store_products = get_product_prices([ingredient.name])
+
+            recipe_data["ingredients"].append({
+                "name": ingredient.name,
+                "quantity": ingredient.quantity,
+                "unit": ingredient.unit,
+                "store_products": store_products,
+            })
+
+        response.append(recipe_data)
+
+    return json.dumps(response, ensure_ascii=False)
 
 
 def handle_recipes_response(response_data: list[dict]) -> dict:
@@ -407,11 +440,11 @@ class ChatAIView(views.APIView):
             user_lang = detect_language(incoming[0].get("content", ""))
 
             system_prompt = (
-                "You are a helpful cooking assistant. "
-                "Always respond in the same language the user uses. "
-                "Never transliterate or change the script of product names. "
+                "You are a helpful cooking assistant."
+                "Always respond in the same language the user uses."
+                "Never transliterate or change the script of product names."
                 "For example, if the user writes 'йогурт з манго' in Ukrainian, keep it exactly "
-                "in Ukrainian Cyrillic. "
+                "in Ukrainian Cyrillic."
                 f"Respond in {user_lang} language."
             )
 
@@ -463,12 +496,20 @@ class ChatAIView(views.APIView):
                 {
                     "type": "function",
                     "function": {
-                        "name": "get_prices",
+                        "name": "get_product_prices",
                         "description": (
-                            "Get average price for each ingredient."
+                            "Get average price for each product."
                             "Do not return ranges."
+                            "All information you use to formulate your "
+                            "responses must come exclusively from the outputs "
+                            "of the provided tools."
+                            "If the user’s request goes beyond what can be "
+                            "answered using only the tool outputs and user input, reply:"
+                            "I’m sorry, I don’t have enough information to answer that."
                             "Must match the user's query language."
-                            "Convert the product name to singular form"
+                            "Convert the product name to singular form."
+                            "Format the output naturally as a sentence."
+
                         ),
                         "parameters": {
                             "type": "object",
@@ -476,6 +517,31 @@ class ChatAIView(views.APIView):
                                 "products": {
                                     "type": "array",
                                     "items": {"type": "string"}
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_prices_for_recipe_titles",
+                        "description": (
+                            "Calculate how much it costs to make a specific recipe or list of recipes. "
+                            "For each recipe, list the ingredients with their individual average prices first, "
+                            "then display the total cost to make the recipe. "
+                            "Use this to estimate the full cost of preparing a dish based on its ingredients. "
+                            "Do NOT use this to look up individual product prices. "
+                            "Use only when the user asks about the cost of making a recipe by name (e.g. 'How much does it cost to make Banilla Splash?')."
+                            "Must match the user's query language."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "recipe_titles": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "List of recipe titles to get prices for"
                                 }
                             }
                         }
@@ -490,7 +556,7 @@ class ChatAIView(views.APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             client = Groq(api_key=api_key)
-            model = "meta-llama/llama-4-scout-17b-16e-instruct"
+            model = "deepseek-r1-distill-llama-70b"
 
             first_response = client.chat.completions.create(
                 model=model,
@@ -535,11 +601,12 @@ class ChatAIView(views.APIView):
     ) -> Response:
         available_functions = {
             "get_recipes": get_recipes,
-            "get_prices": get_prices,
+            "get_product_prices": get_product_prices,
+            "get_prices_for_recipe_titles": get_prices_for_recipe_titles
         }
 
         handlers = {
-            "get_recipes": handle_recipes_response
+            "get_recipes": handle_recipes_response,
         }
 
         messages.append({
