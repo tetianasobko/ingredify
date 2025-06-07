@@ -23,7 +23,22 @@ class ShoppingListItemViewSet(
 
     def perform_create(self, serializer):
         shopping_list = ShoppingList.objects.get(user=self.request.user)
-        serializer.save(shopping_list=shopping_list)
+        name = serializer.validated_data["name"].strip().lower()
+        unit = serializer.validated_data.get("unit", "").strip()
+        quantity = serializer.validated_data["quantity"]
+
+        existing_item = ShoppingListItem.objects.filter(
+            shopping_list=shopping_list,
+            name__iexact=name,
+            unit=unit
+        ).first()
+
+        if existing_item:
+            existing_item.quantity += quantity
+            existing_item.save()
+            serializer = self.get_serializer(existing_item)
+        else:
+            serializer.save(shopping_list=shopping_list)
 
     @action(detail=False, methods=["post"], url_path="bulk-create")
     def bulk_create(self, request):
