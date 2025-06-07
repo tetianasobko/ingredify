@@ -402,6 +402,25 @@ def handle_recipes_response(response_data: list[dict]) -> dict:
 
 
 class ChatAIView(views.APIView):
+    def _get_shopping_list_item_prices(self):
+        items = list(
+            ShoppingListItem.objects
+            .filter(shopping_list__user=self.request.user)
+        )
+
+        response = []
+
+        for item in items:
+            store_products = get_product_prices([item.name])
+
+            response.append({
+                "name": item.name,
+                "quantity": item.quantity,
+                "unit": item.unit,
+                "store_products": store_products,
+            })
+        return json.dumps(response, ensure_ascii=False)
+
     @extend_schema(
         request={
             "application/json": {
@@ -503,9 +522,6 @@ class ChatAIView(views.APIView):
                             "All information you use to formulate your "
                             "responses must come exclusively from the outputs "
                             "of the provided tools."
-                            "If the user’s request goes beyond what can be "
-                            "answered using only the tool outputs and user input, reply:"
-                            "I’m sorry, I don’t have enough information to answer that."
                             "Must match the user's query language."
                             "Convert the product name to singular form."
                             "Format the output naturally as a sentence."
@@ -544,6 +560,20 @@ class ChatAIView(views.APIView):
                                     "description": "List of recipe titles to get prices for"
                                 }
                             }
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_shopping_list_item_prices",
+                        "description": (
+                            "Get the user's shopping list items with their average prices."
+                            "Must match the user's query language."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {}
                         }
                     }
                 }
@@ -602,7 +632,8 @@ class ChatAIView(views.APIView):
         available_functions = {
             "get_recipes": get_recipes,
             "get_product_prices": get_product_prices,
-            "get_prices_for_recipe_titles": get_prices_for_recipe_titles
+            "get_prices_for_recipe_titles": get_prices_for_recipe_titles,
+            "get_shopping_list_item_prices": self._get_shopping_list_item_prices
         }
 
         handlers = {
