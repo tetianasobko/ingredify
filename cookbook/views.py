@@ -296,6 +296,7 @@ def get_recipes(
     return list(queryset.filter(**filters).distinct().values(
         "id",
         "title",
+        "image",
         "cooking_time",
         "servings",
         "difficulty",
@@ -396,7 +397,13 @@ def get_prices_for_recipe_titles(recipe_titles: list[str]):
 def handle_recipes_response(response_data: list[dict]) -> dict:
     return {
         "recipes": [
-            recipe.get("id") for recipe in response_data if "id" in recipe
+            {
+                "id": recipe.get("id"),
+                "title": recipe.get("title"),
+                "image": f"/media/{recipe.get('image')}"
+                if recipe.get("image") else None
+            }
+            for recipe in response_data if "id" in recipe
         ]
     }
 
